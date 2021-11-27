@@ -2,18 +2,29 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"time"
 )
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	log.Printf("listening to client")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	messagec := make(chan int)
+
+	defer func() {
+		close(messagec)
+		messagec = nil
+		log.Printf("client connection is closed")
+	}()
+
+	flusher, _ := w.(http.Flusher)
+
+	log.Printf("listening to client")
 
 	go func(channel chan int) {
 
@@ -24,31 +35,26 @@ func hello(w http.ResponseWriter, r *http.Request) {
 		}()
 
 		for {
-			if channel != nil {
+			select {
+
+			case <-r.Context().Done():
+				return
+
+			default:
 				message := rand.Intn(100)
 
 				channel <- message
 				time.Sleep(2 * time.Second)
 			}
 		}
+
 	}(messagec)
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	defer func() {
-		close(messagec)
-		messagec = nil
-		log.Printf("client connection is closed")
-	}()
-
-	flusher, _ := w.(http.Flusher)
-
 	for {
-
 		select {
+
+		case <-r.Context().Done():
+			return
 
 		case rnum := <-messagec:
 			if rnum%3 == 0 {
@@ -59,22 +65,14 @@ func hello(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, "event: bar\n")
 			}
 
-			fmt.Fprintf(w, "data: { \"msg\": \"%s\" }\n\n", strconv.Itoa(rnum))
+			fmt.Fprintf(w, "data: { \"msg\": \"%d\" }\n\n", rnum)
 			flusher.Flush()
-
-		case <-r.Context().Done():
-			return
 		}
 	}
 }
 
-func home(w http.ResponseWriter, req *http.Request) {
-	content, err := ioutil.ReadFile("index.htm")
-	if err != nil {
-		fmt.Println("Err")
-	}
-
-	fmt.Fprintf(w, "%v", string(content))
+func home(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "index.htm")
 }
 
 func main() {
