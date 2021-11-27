@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Server Sent Events: Go</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+
+<body>
+
+    <script>
+        function connect() {
+            var evtSrc = new EventSource("http://localhost:3000/hello");
+
+            // Listen for messages/events on the EventSource
+            evtSrc.onmessage = function (e) {
+                console.log(JSON.parse(e.data));
+            }
+
+            evtSrc.addEventListener("foo", function (e) {
+                console.log("foo event raised.")
+                console.log(JSON.parse(e.data));
+            }, false);
+
+            evtSrc.addEventListener("bar", function (e) {
+                console.log("bar event raised.")
+                console.log(JSON.parse(e.data));
+            }, false);
+        }
+
+        connect();
+    </script>
+</body>
+
+</html>
