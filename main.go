@@ -8,13 +8,45 @@ import (
 	"time"
 )
 
+func worker(channel chan string, eventT string, pauseT int, r *http.Request) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("recovered", r)
+		}
+	}()
+
+	for {
+		select {
+
+		case <-r.Context().Done():
+			return
+
+		default:
+			rnum := rand.Intn(100)
+
+			message := ""
+
+			if rnum%3 == 0 {
+				message = fmt.Sprintf("event: %s\ndata: { \"msg\": \"%d\" }\n\n", eventT, rnum)
+			} else {
+				message = fmt.Sprintf("data: { \"msg\": \"%d\" }\n\n", rnum)
+			}
+
+			channel <- message
+			time.Sleep(time.Duration(pauseT) * time.Second)
+		}
+	}
+
+}
+
 func hello(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	messagec := make(chan int)
+	messagec := make(chan string)
 
 	defer func() {
 		close(messagec)
@@ -26,29 +58,8 @@ func hello(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("listening to client")
 
-	go func(channel chan int) {
-
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println("recovered", r)
-			}
-		}()
-
-		for {
-			select {
-
-			case <-r.Context().Done():
-				return
-
-			default:
-				message := rand.Intn(100)
-
-				channel <- message
-				time.Sleep(2 * time.Second)
-			}
-		}
-
-	}(messagec)
+	go worker(messagec, "foo", 2, r)
+	go worker(messagec, "bar", 4, r)
 
 	for {
 		select {
@@ -56,16 +67,10 @@ func hello(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 
-		case rnum := <-messagec:
-			if rnum%3 == 0 {
-				fmt.Fprintf(w, "event: foo\n")
-			}
+		case message := <-messagec:
 
-			if rnum%5 == 0 {
-				fmt.Fprintf(w, "event: bar\n")
-			}
+			fmt.Fprintf(w, message)
 
-			fmt.Fprintf(w, "data: { \"msg\": \"%d\" }\n\n", rnum)
 			flusher.Flush()
 		}
 	}
